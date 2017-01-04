@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <title></title>
+
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans">
+
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+
+            body { background: #fff; color: #444; font: 18px/24px 'Open Sans', Arial, sans-serif; font-weight: 400; }
+
+            .wrapper { max-width: 550px; margin: 0 auto; padding: 50px 30px; }
+
+            h1 { font-weight: inherit; }
+            h1 { font-size: 30px; line-height: 38px; margin-bottom: 30px; }
+            h2 { font-size: 22px; line-height: 26px; margin-bottom: 20px; }
+
+            p,
+            .well { margin-bottom: 16px; }
+
+            a { color: #0da95f; text-decoration: underline; }
+
+            img { max-width: 100%; }
+
+            .anchor-link { color: inherit; text-decoration: inherit; }
+
+            .context-menu-style,
+            code { background: #eee; padding: 1px 7px; }
+
+            code { white-space: nowrap; }
+
+            hr { border: none; margin: 60px 0; }
+
+            input,
+            textarea,
+            button { font: inherit; background: none; border: none; }
+
+            .form-control { width: 100%; background: #fff; border: 1px solid #ccc; box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.1); padding: 5px 7px; }
+            .form-control:focus { border-color: #0da95f; box-shadow: 0 0 5px #0da95f; outline: 0; }
+
+            .btn { padding: 10px 20px; cursor: pointer; }
+            .btn[disabled] { background: #ccc; color: #888; cursor: default; }
+            .btn-primary { background: #0da95f; color: #fff; }
+            .btn-primary:hover { background: #0eb968; }
+            .btn-primary:active { background: #0d9a57; }
+
+            .well { padding: 20px; }
+            .well-default { background: #eee; }
+            .well-info { background: #cce5f3; }
+            .well > p:last-child { margin-bottom: 0; }
+
+            .word-break-all { word-break: break-all; }
+
+            .footer { padding-top: 200px; }
+            .footer a { color: #aaa; text-decoration: none; margin-right: 20px; }
+            .footer a:hover { color: #888; }
+        </style>
+    </head>
+    <body>
+        <div class="wrapper">
+            <h1>Using Google Spreadsheets as a&nbsp;JSON&nbsp;endpoint</h1>
+            <p>Google Spreadsheets can be used as a JSON endpoint. This API is not very well documented by Google, and using it involves digging unique tab IDs manually, so I created this document to make it straight-forward for anyone.</p>
+            <p>This document is curated by <a href="https://twitter.com/codeclown">@codeclown</a>. Google and relevant names and stuff are trademarked, yadda yadda, I don't own them and have no affiliation with them.</p>
+            <p>Hosted on <a href="https://github.com/codeclown/google-spreadsheet-json">GitHub</a>.</p>
+            <p>Be aware that there are <a target="_blank" href="https://github.com/chriszarate/Sheetrock">many</a> <a target="_blank" href="https://sheetsu.com/">resources</a> available for working with Google Spreadsheets in JavaScript. This document describes the simple method for when you just want to fetch plain data with no external dependencies.</p>
+            <hr>
+            <h2 id="step-1-publish-your-spreadsheet"><a class="anchor-link" href="#step-1-publish-your-spreadsheet">Step 1: Publish your Spreadsheet</a></h2>
+            <p>Open your Spreadsheet and find <span class="context-menu-style">Publish to the web</span> from the <span class="context-menu-style">File</span> menu.</p>
+            <p><img src="img/publish-to-web-menu.png" alt="" style="max-height: 300px;"></p>
+            <p>Click the blue Publish-button and you'll get a URL to copy.</p>
+            <p><img src="img/publish-to-web-url.png" alt="" style="max-height: 300px;"></p>
+            <hr>
+            <h2 id="step-2-fetch-json-urls"><a class="anchor-link" href="#step-2-fetch-json-urls">Step 2: Fetch JSON URLs</a></h2>
+            <p>Paste that URL here and submit the form:</p>
+            <div class="js-mount-fetcher"></div>
+            <hr>
+            <h2 id="notes"><a class="anchor-link" href="#notes">Notes</a></h2>
+            <p>JSONP is also supported. Just append <code>&amp;callback=foo</code>.</p>
+            <p>For XML, remove <code>?alt=json-in-script</code>.</p>
+            <p>This tool is completely client-side. Your Spreadsheet information is not sent to nor stored on any server.</p>
+            <p>View the source to learn how the URLs are fetched.</p>
+            <p>Note that incorrect formatting causes the API to return an empty JSON set. Do not leave empty rows in the Spreadsheet. Example of properly formatted content:</p>
+            <p><img src="img/spreadsheet-content-example.png" alt="" style="max-height: 300px;"></p>
+            <hr>
+            <p class="footer">
+                <a href="https://github.com/codeclown/google-spreadsheet-json">GitHub</a>
+                <a target="_blank" href="https://twitter.com/codeclown">@codeclown</a>
+            </p>
+        </div>
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/es6-promise/4.0.5/es6-promise.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/mithril/1.0.0-rc.7/mithril.min.js"></script>
+        <script>
+            'use strict';
+
+            var state = {
+                spreadsheetUrl: '',
+                spreadSheetId: null,
+                loading: false,
+                message: null,
+                tabs: []
+            };
+
+            function fetchUrls(event) {
+                event.preventDefault();
+
+                state.loading = false;
+                state.message = null;
+                state.tabs = [];
+
+                // First we grab the spreadsheet ID from the URL. Here's the URL format:
+                // https://docs.google.com/spreadsheets/d/_spreadsheet_id_/_something_
+                var matches = state.spreadsheetUrl.match(/\/d\/([^\/]+)\//);
+                if(!matches) return somethingWentWrong();
+                state.spreadSheetId = matches[1];
+
+                // Next we make a request to a XML API which returns details of each tab in the Spreadsheet
+                var xmlUrl = 'https://spreadsheets.google.com/feeds/worksheets/' + state.spreadSheetId + '/public/full';
+                loadJsonp(xmlUrl, proceedWithXml, somethingWentWrong);
+                state.loading = true;
+                m.redraw();
+            }
+
+            function proceedWithXml(xml) {
+                // We parse all tabs (entries) from the resulting XML
+                var parser = new DOMParser();
+                var xmlDocument = parser.parseFromString(xml, 'text/xml');
+                var entries = toArray(xmlDocument.getElementsByTagName('entry'));
+
+                for(var i = 0, entry; i < entries.length; i++) {
+                    entry = entries[i];
+
+                    var title = entry.getElementsByTagName('title')[0].textContent;
+
+                    var id = toArray(entry.getElementsByTagName('link')).filter(function(link) {
+                        return link.getAttribute('rel') === 'http://schemas.google.com/spreadsheets/2006#listfeed';
+                    })[0].getAttribute('href').match(/\/([^\/]+)\/public/)[1];
+
+                    var url = 'https://spreadsheets.google.com/feeds/list/' + state.spreadSheetId + '/' + id + '/public/values?alt=json-in-script';
+
+                    state.tabs.push({ title: title, id: id, url: url });
+                }
+
+                state.loading = false;
+                m.redraw();
+            }
+
+            function somethingWentWrong() {
+                state.message = 'Fetching URLs failed. Make sure your Spreadsheet is published and not empty.';
+                state.loading = false;
+                m.redraw();
+            }
+
+            function toArray(list) {
+                return Array.prototype.slice.call(list);
+            }
+
+            m.mount(document.getElementsByClassName('js-mount-fetcher')[0], {
+                view: function() {
+                    return m('form', { onsubmit: fetchUrls }, [
+                        m('p', [
+                            m('input.form-control', {
+                                oninput: function(event) {
+                                    state.spreadsheetUrl = event.target.value.trim();
+                                },
+                                value: state.spreadsheetUrl
+                            })
+                        ]),
+                        m('p', [
+                            m('button.btn.btn-primary', {
+                                type: 'submit',
+                                disabled: !state.spreadsheetUrl
+                            }, 'Fetch JSON URLs')
+                        ]),
+                        state.loading
+                            ? m('p', 'Loading...')
+                            : state.message
+                            ? m('p.well.well-info', state.message)
+                            : state.tabs.length
+                            ? m('.well.well-default', [
+                                m('p', 'Here are your JSON urls for each tab.'),
+                                state.tabs.map(function(tab) {
+                                    return m('p.word-break-all', [
+                                        tab.title,
+                                        m('input.form-control', { value: tab.url, onfocus: selectAll }),
+                                        m('a', { target: '_blank', href: tab.url }, '(open)')
+                                    ]);
+                                })
+                            ])
+                            : []
+                    ]);
+                }
+            });
+
+            function selectAll(event) {
+                event.target.select();
+            }
+
+            var jsonpCallbackIndex = 0;
+            function loadJsonp(url, callback, errorCallback) {
+                var callbackName = 'jsonpCallback' + jsonpCallbackIndex;
+                window[callbackName] = callback;
+
+                var tag = document.createElement('script');
+                tag.src = url + '?callback=' + callbackName;
+                tag.onerror = errorCallback;
+                document.body.appendChild(tag);
+
+                jsonpCallbackIndex++;
+            }
+        </script>
+    </body>
+</html>
