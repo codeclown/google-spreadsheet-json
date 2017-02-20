@@ -44,10 +44,12 @@
             .form-control:focus { border-color: #0da95f; box-shadow: 0 0 5px #0da95f; outline: 0; }
 
             .btn { padding: 10px 20px; cursor: pointer; }
-            .btn[disabled] { background: #ccc; color: #888; cursor: default; }
             .btn-primary { background: #0da95f; color: #fff; }
             .btn-primary:hover { background: #0eb968; }
             .btn-primary:active { background: #0d9a57; }
+            .btn[disabled],
+            .btn[disabled]:hover,
+            .btn[disabled]:active { background: #ccc; color: #888; cursor: default; }
 
             .well { padding: 20px; }
             .well-default { background: #eee; }
